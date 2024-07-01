@@ -41,29 +41,7 @@ def get_pgd_linf(epsilon):
     return pgd_linf
 
 
-
-
-def epoch(loader, model, opt=None):
-    """Standard training/evaluation epoch over the dataset"""
-    if opt==None:
-        model.eval()
-    else: model.train()
-    total_loss, total_err = 0.,0.
-    for X,y in loader:
-        X,y = X.to(device), y.to(device)
-        yp = model(X)
-        loss = nn.CrossEntropyLoss()(yp,y)
-        if opt:
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-        
-        total_err += (yp.max(dim=1)[1] != y).sum().item()
-        total_loss += loss.item() * X.shape[0]
-    return 1.0 - (total_err / len(loader.dataset)), total_loss / len(loader.dataset)
-
-
-def epoch_adversarial(loader, model, attack, opt=None, **kwargs):
+def epoch(loader, model, attack, adversarial_epoch, opt=None, **kwargs):
     """Adversarial training/evaluation epoch over the dataset"""
     if opt==None:
         model.eval()
@@ -71,8 +49,11 @@ def epoch_adversarial(loader, model, attack, opt=None, **kwargs):
     total_loss, total_err = 0.,0.
     for X,y in loader:
         X,y = X.to(device), y.to(device)
-        delta = attack(model, X, y, **kwargs)
-        yp = model(X+delta)
+        if adversarial_epoch == True:
+            delta = attack(model, X, y, **kwargs)
+            yp = model(X+delta)
+        else:
+            yp = model(X)
         loss = nn.CrossEntropyLoss()(yp,y)
         if opt:
             opt.zero_grad()
@@ -84,49 +65,24 @@ def epoch_adversarial(loader, model, attack, opt=None, **kwargs):
     return 1.0 - (total_err / len(loader.dataset)), total_loss / len(loader.dataset)
 
 
-def train_and_save_model(model, train_loader, test_loader, pgd_linf, lr_schedule=None, num_epochs=10, r_train=True, save_path="model.pt", project_name="compressed-robust"):
+def train_and_save_model(model, train_loader, test_loader, pgd_linf, num_epochs=10, r_train=True, save_path="model.pt", project_name="compressed-robust"):
     wandb.init(project=project_name, name=save_path[:-3])
 
-    
     # Define your optimizer
-    # opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
     opt = optim.SGD(model.parameters(), lr=1e-1)
-
-    # Define your learning rate schedule
-    def lr_lambda(epoch):
-        if epoch < 5:
-            return epoch / 5
-        else:
-            return 0.1 * (1 + math.cos(math.pi * epoch / 50))
-
-    # scheduler = LambdaLR(opt, lr_lambda)
     
-    test_err, test_loss = epoch(test_loader, model)
-    adv_err, adv_loss = epoch_adversarial(test_loader, model, pgd_linf)
+    test_err, test_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch=False)
+    adv_err, adv_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch=True)
 
     wandb.log({"test_loss": test_loss, "test_error": test_err, "adv_error": adv_err})
     
-    '''
-    lr_schedule_type = "linear"
-    s_factor = 1.0
-    e_factor = 1.0
-    # Define your learning rate schedule
-    scheduler = LinearLR(opt,start_factor=s_factor, end_factor=e_factor,total_iters=num_epochs)
-    ,config = {"lr_schedule_type":lr_schedule_type,"lr":lr,"momentum":momentum,"start factor":s_factor,"end_factor":e_factor}
-    '''
     wandb.init(project=project_name, name=save_path[:-3])
     
     for t in range(num_epochs):
         current_lr = opt.param_groups[0]["lr"]
-
-        if r_train:
-            train_err, train_loss = epoch_adversarial(train_loader, model, pgd_linf, opt)
-            test_err, test_loss = epoch(test_loader, model)
-            adv_err, adv_loss = epoch_adversarial(test_loader, model, pgd_linf)
-        else:
-            train_err, train_loss = epoch(train_loader, model, opt)
-            test_err, test_loss = epoch(test_loader, model)
-            adv_err, adv_loss = epoch_adversarial(test_loader, model, pgd_linf)
+        train_err, train_loss = epoch(train_loader, model, pgd_linf, opt=opt, adversarial_epoch = r_train) #training (adversarial if r_train is True)
+        test_err, test_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch = False) #Normal test
+        adv_err, adv_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch = True) #Adversarial test
         if t == 4:
             for param_group in opt.param_groups:
                 param_group["lr"] = 1e-2
@@ -139,10 +95,6 @@ def train_and_save_model(model, train_loader, test_loader, pgd_linf, lr_schedule
     wandb.finish()
 
 def evaluate_model(model, test_loader, pgd_linf):
-
-    test_err, test_loss = epoch(test_loader, model)
-    adv_err, adv_loss = epoch_adversarial(test_loader, model, pgd_linf)
-        
+    test_err, test_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch = False)
+    adv_err, adv_loss = epoch(test_loader, model, pgd_linf, adversarial_epoch = True)
     return test_err, adv_err
-
-

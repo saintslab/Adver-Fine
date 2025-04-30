@@ -21,7 +21,6 @@ def main(quant, prune):
                     save_path = f"{save_str['save_dir']}/{save_str['model_name']}_none_none.pt"
                     model = ModelLoad(model_struct, loader.channel, loader.size, loader.classes).get_network()
                     Train(model, loader).train(num_epochs=10, adv=adv, save=save_path)
-                    model = torch.load(save_path, map_location=device)
                     Compress(model, loader, quant, prune, save_str).execute()
 
 
@@ -68,9 +67,9 @@ def read_results():
     final = dict()
     for train_method in ['standard', 'robust']:
         final[train_method] = dict()
-        for dataset in ['tiny']:#, ['mnist', 'fashionmnist', 'cifar10', 'cifar100', 'svhn', 'tiny']:
+        for dataset in ['mnist', 'fashionmnist', 'cifar10', 'cifar100', 'svhn', 'tiny']:
             final[train_method][dataset] = dict()
-            for model_struct in ['wide_resnet50_2']:#['convnet', 'wide_resnet50_2', 'vit_base_mci_224']:
+            for model_struct in ['convnet', 'wide_resnet50_2', 'vit_base_mci_224']:
                 final[train_method][dataset][model_struct] = dict()
                 for i in range(3):
                     try:
@@ -108,6 +107,6 @@ if __name__ == '__main__':
     prune = {'level': [0.9, 0.7, 0.5], #[0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
              'method': ['prune_std', 'prune_adv']} #, 'prune_none']}
 
-    # main(quant, prune)
-    # auto(quant, prune)
+    main(quant, prune)
+    auto(quant, prune)
     read_results()

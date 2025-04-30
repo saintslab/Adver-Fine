@@ -20,10 +20,37 @@ Kindly use the following BibTeX entry if you use the code in your work.
 ```
 ## Requirements
 
-To be updated...
+pytorch, [autoattack](https://github.com/RobustBench/robustbench), [nni](https://github.com/microsoft/nni/)
 
 ## Example Usage
 
-To be updated...
+### Quantization and Pruning
+```python
+from utils import *
+
+quant = {'level': ['int8'], 'method': ['PTQ_std']}
+prune = {'level': [0.7], 'method': ['prune_std']}
+
+loader = DataLoad('mnist')
+model = ModelLoad('convnet', loader.channel, loader.size, loader.classes).get_network()
+Train(model, loader).train(num_epochs=10, adv=False)
+Compress(model, loader, quant, prune, './PATH').execute()
+```
+
+### Autoattack Evaluation
+```python
+from utils import *
+
+loader = DataLoad('mnist')
+x_test, y_test = torch.zeros(0), torch.zeros(0)
+for x, y in loader.test_loader:
+    x_test = torch.cat((x_test, x), 0)
+    y_test = torch.cat((y_test, y), 0)
+x_test, y_test = x_test.float(), y_test.long()
+model = torch.load('./PATH').eval()
+adversary = AutoAttack(model=model, norm='Linf', eps=loader.epsilon, verbose=False, version='rand')
+test = adversary.clean_accuracy(x_test, y_test)
+_, auto = adversary.run_standard_evaluation(x_test, y_test)
+```
 
 
